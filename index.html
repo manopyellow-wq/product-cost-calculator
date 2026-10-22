@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>คำนวณต้นทุนสินค้า</title>
+<style>
+  :root {
+    --bg: #fff8e1;
+    --paper: #ffffff;
+    --ink: #3e2f00;
+    --muted: #7a6a3a;
+    --line: #e6cf7a;
+    --head: #ffd54f;
+    --band: #fff3c4;
+    --input: #fffbea;
+    --input-border: #f2c230;
+    --accent: #f5b301;
+    --accent-dark: #c68a00;
+    --danger: #c0392b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: "Sarabun", "Tahoma", "Leelawadee UI", sans-serif; font-size: 15px;
+  }
+  .wrap { max-width: 980px; margin: 24px auto; padding: 0 16px; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: center; }
+  .toolbar select { flex: 1 1 220px; }
+  button, select {
+    font: inherit; padding: 7px 12px; border: 1px solid var(--line);
+    border-radius: 6px; background: var(--paper); cursor: pointer;
+  }
+  button:hover { background: var(--band); }
+  button.primary { background: var(--accent); color: var(--ink); border-color: var(--accent-dark); font-weight: bold; }
+  button.primary:hover { background: #ffc61a; }
+  button.danger { color: var(--danger); }
+  .sheet { background: var(--paper); border: 1px solid var(--line); border-top: 6px solid var(--accent); border-radius: 8px; padding: 20px; }
+  .hint { color: var(--danger); font-size: 13px; margin: 0 0 12px; }
+  .hint span { display: inline-block; width: 14px; height: 14px; background: var(--input); border: 1px solid var(--input-border); vertical-align: middle; }
+  .header-grid { display: grid; grid-template-columns: 130px 1fr; gap: 6px 10px; align-items: center; margin-bottom: 16px; }
+  .header-grid label { font-weight: bold; }
+  .header-grid .title { grid-column: 1 / -1; font-size: 18px; font-weight: bold; }
+  .header-grid .band { grid-column: 1 / -1; background: var(--band); padding: 4px 6px; border-radius: 4px; }
+  input {
+    font: inherit; width: 100%; padding: 5px 6px; border: 1px solid var(--input-border);
+    background: var(--input); border-radius: 3px; color: var(--ink);
+  }
+  input:focus { outline: 2px solid var(--accent-dark); outline-offset: -1px; }
+  .section-title { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; font-size: 16px; }
+
+  /* ปุ่มคลิปอธิบาย */
+  .vbtn {
+    display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px;
+    font-size: 13px; border-radius: 999px; border: 1px solid var(--accent-dark);
+    background: var(--accent); color: var(--ink); font-weight: bold; white-space: nowrap;
+    vertical-align: middle; margin-right: 6px;
+  }
+  .vbtn:hover { background: #ffc61a; }
+  .vbtn.nolink { background: var(--band); border-style: dashed; font-weight: normal; }
+
+  /* หน้าต่างอธิบาย */
+  dialog { border: none; border-radius: 10px; padding: 0; max-width: 560px; width: calc(100% - 32px); color: var(--ink); }
+  dialog::backdrop { background: rgba(60, 45, 0, .45); }
+  .dlg-head { background: var(--head); padding: 12px 16px; font-weight: bold; font-size: 17px; display: flex; justify-content: space-between; align-items: center; }
+  .dlg-head button { border: none; background: none; font-size: 20px; padding: 0 4px; }
+  .dlg-body { padding: 16px; }
+  .dlg-body ul { margin: 0 0 14px; padding-left: 20px; }
+  .dlg-body li { margin-bottom: 6px; }
+  .dlg-link { background: var(--band); border-radius: 6px; padding: 10px; }
+  .dlg-link .row { display: flex; gap: 6px; margin-top: 6px; }
+  .dlg-link small { color: var(--muted); }
+  input.num { text-align: right; }
+  .scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 720px; }
+  th, td { border: 1px solid var(--line); padding: 4px 6px; }
+  th { background: var(--head); white-space: nowrap; }
+  td.c { text-align: center; }
+  td.r { text-align: right; font-variant-numeric: tabular-nums; }
+  td.del { width: 34px; text-align: center; }
+  td.del button { padding: 0 8px; border: none; color: var(--danger); background: none; font-size: 18px; }
+  .summary td { border: none; padding: 6px; }
+  .summary td.label { text-align: right; }
+  .summary td.r { border-bottom: 1px solid var(--line); }
+  .summary .strong td { font-weight: bold; }
+  .summary .total td.r { border-bottom: 3px double var(--ink); font-size: 17px; }
+  .summary input { width: 90px; }
+  .row-actions { margin: 8px 0 16px; }
+
+  @media print {
+    body { background: #fff; }
+    .toolbar, .row-actions, td.del, th.del, .hint, .vbtn { display: none !important; }
+    .sheet { border: none; padding: 0; }
+    input { background: none; padding: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="toolbar">
+    <select id="savedList" title="รายการที่บันทึกไว้"></select>
+    <button id="btnLoad">เปิด</button>
+    <button id="btnDelete" class="danger">ลบ</button>
+    <button id="btnNew">สร้างใหม่</button>
+    <button id="btnSave" class="primary">บันทึก</button>
+    <button id="btnCsv">ส่งออก CSV</button>
+    <button id="btnPrint">พิมพ์</button>
+  </div>
+
+  <div class="sheet">
+    <p class="hint"><span></span> ให้กรอกเฉพาะช่องสีนี้</p>
+
+    <div class="header-grid">
+      <div class="title"><input id="company" placeholder="ชื่อบริษัท"></div>
+      <div class="title" style="font-size:16px">คำนวณต้นทุนสินค้าสำเร็จรูปในประเทศ (ต้นทุนผลิตภัณฑ์)</div>
+      <label for="code">รหัสสินค้า :</label><input id="code">
+      <label for="name">ชื่อสินค้า :</label><input id="name">
+    </div>
+
+    <h3 class="section-title">วัตถุดิบทางตรง <button class="vbtn" data-topic="material">▶ คลิปอธิบาย</button></h3>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>ลำดับ</th><th>รหัสวัตถุดิบ</th><th>รายละเอียด</th><th>ปริมาณ</th>
+            <th>หน่วยนับ</th><th>ราคาต่อหน่วย</th><th>จำนวนเงิน (บาท)</th><th class="del"></th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <div class="row-actions"><button id="btnAddRow">+ เพิ่มแถววัตถุดิบ</button></div>
+
+    <table class="summary" style="min-width:0">
+      <tr class="strong"><td class="label" colspan="2">รวมวัตถุดิบทั้งสิ้น</td><td class="r" id="sumMat"></td></tr>
+      <tr><td class="label"><button class="vbtn" data-topic="labor">▶ คลิปอธิบาย</button>ค่าแรงงานทางตรง คิดเป็น %</td><td class="r" style="width:110px;border:none"><input id="laborPct" class="num"></td><td class="r" id="labor"></td></tr>
+      <tr><td class="label"><button class="vbtn" data-topic="overhead">▶ คลิปอธิบาย</button>ค่าใช้จ่ายการผลิต คิดเป็น %</td><td class="r" style="border:none"><input id="ohPct" class="num"></td><td class="r" id="oh"></td></tr>
+      <tr><td class="label" colspan="2">รวมต้นทุนที่ผลิตเสร็จทั้งสิ้น</td><td class="r" id="totalCost"></td></tr>
+      <tr><td class="label" colspan="2">ปริมาณสินค้าสำเร็จรูปที่ผลิตได้</td><td class="r"><input id="outQty" class="num" style="width:100%"></td></tr>
+      <tr class="strong total"><td class="label" colspan="2">ราคาต่อหน่วยของสินค้าที่ผลิตเสร็จ</td><td class="r" id="unitCost" style="width:170px"></td></tr>
+    </table>
+  </div>
+</div>
+
+<dialog id="dlg">
+  <div class="dlg-head"><span id="dlgTitle"></span><button id="dlgClose" title="ปิด">×</button></div>
+  <div class="dlg-body">
+    <ul id="dlgPoints"></ul>
+    <p><button id="dlgWatch" class="primary">▶ เปิดดูคลิป</button></p>
+    <div class="dlg-link">
+      <label for="dlgUrl"><b>ลิงก์คลิป</b> <small>(YouTube, Google Drive หรือเว็บอื่น)</small></label>
+      <div class="row">
+        <input id="dlgUrl" placeholder="https://www.youtube.com/watch?v=...">
+        <button id="dlgSaveUrl">บันทึกลิงก์</button>
+      </div>
+    </div>
+  </div>
+</dialog>
+
+<script>
+// ================================================================
+// ลิงก์คลิปอธิบาย — ใส่ลิงก์ในเครื่องหมาย "" ได้เลย
+// (หรือกดปุ่ม "คลิปอธิบาย" ในแอปแล้วใส่ลิงก์ที่ช่องด้านล่างก็ได้)
+// ================================================================
+const VIDEO_LINKS = {
+  material: "",  // 1. วัตถุดิบทางตรง
+  labor: "",     // 2. ค่าแรงงานทางตรง
+  overhead: "",  // 3. ค่าใช้จ่ายการผลิต
+};
+
+const TOPICS = {
+  material: {
+    title: "1. วัตถุดิบทางตรง",
+    points: [
+      "วัตถุดิบทางตรงคืออะไร",
+      "วิเคราะห์อย่างไรว่าวัตถุดิบไหนเป็นวัตถุดิบทางตรง",
+      "ตัวเลขปริมาณและราคาต่อหน่วยเอามาจากไหน",
+      "หาข้อมูลมาได้อย่างไร",
+    ],
+  },
+  labor: {
+    title: "2. ค่าแรงงานทางตรง",
+    points: [
+      "ค่าแรงงานทางตรงคืออะไร",
+      "คิดอย่างไรเพื่อให้ได้ % ค่าแรงงานทางตรงที่ถูกต้องมาใส่",
+    ],
+  },
+  overhead: {
+    title: "3. ค่าใช้จ่ายการผลิต",
+    points: [
+      "ค่าใช้จ่ายการผลิตคืออะไร คิดอย่างไร",
+      "ข้อมูลเอามาได้จากที่ไหน",
+      "หลักการคิดตัวเลข % ค่าใช้จ่ายการผลิต",
+    ],
+  },
+};
+
+const LINK_KEY = "cost-calc-video-links";
+function getLinks() {
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(LINK_KEY)) || {}; } catch {}
+  const out = {};
+  for (const k in TOPICS) out[k] = (saved[k] || VIDEO_LINKS[k] || "").trim();
+  return out;
+}
+function setLink(topic, url) {
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(LINK_KEY)) || {}; } catch {}
+  saved[topic] = url;
+  try { localStorage.setItem(LINK_KEY, JSON.stringify(saved)); return true; } catch { return false; }
+}
+function refreshVideoButtons() {
+  const links = getLinks();
+  document.querySelectorAll(".vbtn").forEach((b) => {
+    const has = !!links[b.dataset.topic];
+    b.classList.toggle("nolink", !has);
+    b.title = has ? "ดูคลิปอธิบาย" : "ยังไม่ได้ใส่ลิงก์คลิป";
+  });
+}
+
+let currentTopic = null;
+document.querySelectorAll(".vbtn").forEach((b) => b.onclick = () => {
+  currentTopic = b.dataset.topic;
+  const t = TOPICS[currentTopic];
+  const url = getLinks()[currentTopic];
+  document.getElementById("dlgTitle").textContent = "คลิปอธิบาย: " + t.title;
+  document.getElementById("dlgPoints").innerHTML = t.points.map((p) => `<li>${p}</li>`).join("");
+  document.getElementById("dlgUrl").value = url;
+  document.getElementById("dlgWatch").disabled = !url;
+  document.getElementById("dlgWatch").textContent = url ? "▶ เปิดดูคลิป" : "ยังไม่ได้ใส่ลิงก์คลิป";
+  document.getElementById("dlg").showModal();
+});
+document.getElementById("dlgClose").onclick = () => document.getElementById("dlg").close();
+document.getElementById("dlgWatch").onclick = () => {
+  const url = getLinks()[currentTopic];
+  if (url) window.open(url, "_blank", "noopener");
+};
+document.getElementById("dlgSaveUrl").onclick = () => {
+  const url = document.getElementById("dlgUrl").value.trim();
+  if (url && !/^https?:\/\//i.test(url)) { alert("ลิงก์ต้องขึ้นต้นด้วย http:// หรือ https://"); return; }
+  if (!setLink(currentTopic, url)) { alert("บันทึกลิงก์ไม่สำเร็จ (เบราว์เซอร์ไม่อนุญาตให้เก็บข้อมูล)"); return; }
+  document.getElementById("dlgWatch").disabled = !url;
+  document.getElementById("dlgWatch").textContent = url ? "▶ เปิดดูคลิป" : "ยังไม่ได้ใส่ลิงก์คลิป";
+  refreshVideoButtons();
+  alert(url ? "บันทึกลิงก์แล้ว" : "ลบลิงก์แล้ว");
+};
+refreshVideoButtons();
+
+const STORE_KEY = "cost-calc-products";
+const $ = (id) => document.getElementById(id);
+const fmt2 = (n) => n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtUnit = (n) => n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+const num = (v) => { const n = parseFloat(String(v).replace(/,/g, "")); return isFinite(n) ? n : 0; };
+
+const sample = {
+  company: "บริษัท ตัวอย่างส่งออก จำกัด",
+  code: "01-010204",
+  name: "จานลึก ลายม้า",
+  laborPct: 15, ohPct: 30, outQty: 12,
+  rows: [
+    { mcode: "", desc: "", qty: 15, unit: "กิโลกรัม", price: 250 },
+    ...Array.from({ length: 5 }, () => ({ mcode: "", desc: "", qty: "", unit: "", price: "" })),
+  ],
+};
+const blank = () => ({
+  company: $("company").value, code: "", name: "", laborPct: 15, ohPct: 30, outQty: "",
+  rows: Array.from({ length: 6 }, () => ({ mcode: "", desc: "", qty: "", unit: "", price: "" })),
+});
+
+function addRow(r = { mcode: "", desc: "", qty: "", unit: "", price: "" }) {
+  const tr = document.createElement("tr");
+  tr.innerHTML = `
+    <td class="c idx"></td>
+    <td><input data-f="mcode"></td>
+    <td><input data-f="desc"></td>
+    <td style="width:100px"><input data-f="qty" class="num" inputmode="decimal"></td>
+    <td style="width:100px"><input data-f="unit"></td>
+    <td style="width:110px"><input data-f="price" class="num" inputmode="decimal"></td>
+    <td class="r amt" style="width:140px"></td>
+    <td class="del"><button title="ลบแถว">×</button></td>`;
+  for (const inp of tr.querySelectorAll("input")) inp.value = r[inp.dataset.f] ?? "";
+  tr.querySelector(".del button").onclick = () => { tr.remove(); recalc(); };
+  $("rows").appendChild(tr);
+}
+
+function getData() {
+  return {
+    company: $("company").value, code: $("code").value, name: $("name").value,
+    laborPct: $("laborPct").value, ohPct: $("ohPct").value, outQty: $("outQty").value,
+    rows: [...$("rows").children].map((tr) => {
+      const o = {};
+      for (const inp of tr.querySelectorAll("input")) o[inp.dataset.f] = inp.value;
+      return o;
+    }),
+  };
+}
+
+function setData(d) {
+  for (const k of ["company", "code", "name", "laborPct", "ohPct", "outQty"]) $(k).value = d[k] ?? "";
+  $("rows").innerHTML = "";
+  d.rows.forEach(addRow);
+  recalc();
+}
+
+function compute(d) {
+  const amounts = d.rows.map((r) => num(r.qty) * num(r.price));
+  const sumMat = amounts.reduce((a, b) => a + b, 0);
+  const labor = sumMat * num(d.laborPct) / 100;
+  const oh = sumMat * num(d.ohPct) / 100;
+  const totalCost = sumMat + labor + oh;
+  const q = num(d.outQty);
+  return { amounts, sumMat, labor, oh, totalCost, unitCost: q > 0 ? totalCost / q : null };
+}
+
+function recalc() {
+  const c = compute(getData());
+  [...$("rows").children].forEach((tr, i) => {
+    tr.querySelector(".idx").textContent = i + 1;
+    tr.querySelector(".amt").textContent = fmt2(c.amounts[i]);
+  });
+  $("sumMat").textContent = fmt2(c.sumMat);
+  $("labor").textContent = fmt2(c.labor);
+  $("oh").textContent = fmt2(c.oh);
+  $("totalCost").textContent = fmt2(c.totalCost);
+  $("unitCost").textContent = c.unitCost === null ? "-" : fmtUnit(c.unitCost);
+}
+
+// ---- บันทึก / เปิด (เก็บในเบราว์เซอร์เครื่องนี้) ----
+function loadStore() { try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch { return {}; } }
+function saveStore(s) { try { localStorage.setItem(STORE_KEY, JSON.stringify(s)); return true; } catch { return false; } }
+
+function refreshList(selected) {
+  const s = loadStore();
+  const keys = Object.keys(s).sort();
+  $("savedList").innerHTML = keys.length
+    ? keys.map((k) => `<option value="${k.replace(/"/g, "&quot;")}">${k.replace(/</g, "&lt;")}</option>`).join("")
+    : `<option value="">— ยังไม่มีรายการที่บันทึก —</option>`;
+  if (selected) $("savedList").value = selected;
+}
+
+$("btnSave").onclick = () => {
+  const d = getData();
+  if (!d.code.trim()) { alert("กรุณากรอกรหัสสินค้าก่อนบันทึก"); $("code").focus(); return; }
+  const key = `${d.code.trim()} ${d.name.trim()}`.trim();
+  const s = loadStore();
+  s[key] = d;
+  if (saveStore(s)) { refreshList(key); alert("บันทึกแล้ว: " + key); }
+  else alert("บันทึกไม่สำเร็จ (เบราว์เซอร์ไม่อนุญาตให้เก็บข้อมูล)");
+};
+$("btnLoad").onclick = () => {
+  const d = loadStore()[$("savedList").value];
+  if (d) setData(d);
+};
+$("btnDelete").onclick = () => {
+  const k = $("savedList").value;
+  if (!k || !confirm("ลบรายการ " + k + " ?")) return;
+  const s = loadStore(); delete s[k]; saveStore(s); refreshList();
+};
+$("btnNew").onclick = () => setData(blank());
+$("btnAddRow").onclick = () => { addRow(); recalc(); };
+$("btnPrint").onclick = () => window.print();
+
+$("btnCsv").onclick = () => {
+  const d = getData(), c = compute(d);
+  const q = (v) => `"${String(v).replace(/"/g, '""')}"`;
+  const lines = [
+    [d.company], ["คำนวณต้นทุนสินค้าสำเร็จรูปในประเทศ (ต้นทุนผลิตภัณฑ์)"],
+    ["รหัสสินค้า", d.code], ["ชื่อสินค้า", d.name], [],
+    ["ลำดับ", "รหัสวัตถุดิบ", "รายละเอียด", "ปริมาณ", "หน่วยนับ", "ราคาต่อหน่วย", "จำนวนเงิน(บาท)"],
+    ...d.rows.map((r, i) => [i + 1, r.mcode, r.desc, r.qty, r.unit, r.price, c.amounts[i].toFixed(2)]),
+    ["", "", "", "", "", "รวมวัตถุดิบทั้งสิ้น", c.sumMat.toFixed(2)],
+    ["", "", "", "", "ค่าแรงงานทางตรง %", d.laborPct, c.labor.toFixed(2)],
+    ["", "", "", "", "ค่าใช้จ่ายการผลิต %", d.ohPct, c.oh.toFixed(2)],
+    ["", "", "", "", "", "รวมต้นทุนที่ผลิตเสร็จทั้งสิ้น", c.totalCost.toFixed(2)],
+    ["", "", "", "", "", "ปริมาณสินค้าสำเร็จรูปที่ผลิตได้", d.outQty],
+    ["", "", "", "", "", "ราคาต่อหน่วยของสินค้าที่ผลิตเสร็จ", c.unitCost === null ? "" : c.unitCost],
+  ];
+  const csv = "﻿" + lines.map((l) => l.map(q).join(",")).join("\r\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  a.download = `ต้นทุน_${d.code || "สินค้า"}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+
+document.addEventListener("input", recalc);
+refreshList();
+setData(sample);
+</script>
+</body>
+</html>
