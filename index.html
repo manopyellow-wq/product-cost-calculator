@@ -85,6 +85,8 @@
   .summary .strong td { font-weight: bold; }
   .summary .total td.r { border-bottom: 3px double var(--ink); font-size: 17px; }
   .summary input { width: 90px; }
+  .summary select { padding: 4px 6px; margin-left: 4px; }
+  .muted { color: var(--muted); font-weight: normal; }
   .row-actions { margin: 8px 0 16px; }
   .note { color: var(--muted); font-size: 13px; margin: 0 0 8px; }
   input.locked { background: var(--band); border-color: var(--line); cursor: not-allowed; }
@@ -154,7 +156,16 @@
     <table class="summary" style="min-width:0">
       <tr class="strong"><td class="label" colspan="2">รวมวัตถุดิบทั้งสิ้น</td><td class="r" id="sumMat"></td></tr>
       <tr><td class="label"><button class="vbtn" data-topic="labor">▶ คลิปอธิบาย</button>ค่าแรงงานทางตรง คิดเป็น %</td><td class="r" style="width:110px;border:none"><input id="laborPct" class="num"></td><td class="r" id="labor"></td></tr>
-      <tr><td class="label"><button class="vbtn" data-topic="overhead">▶ คลิปอธิบาย</button>ค่าใช้จ่ายการผลิต คิดเป็น %</td><td class="r" style="border:none"><input id="ohPct" class="num"></td><td class="r" id="oh"></td></tr>
+      <tr><td class="label" colspan="2"><button class="vbtn" data-topic="overhead">▶ คลิปอธิบาย</button>ค่าใช้จ่ายการผลิต ปันส่วนตาม
+        <select id="ohBase">
+          <option value="units">หน่วยที่ผลิตได้ (หน่วย)</option>
+          <option value="machine">ชั่วโมงเครื่องจักร (ชั่วโมง)</option>
+          <option value="dlh">ชั่วโมงแรงงานทางตรง (ชั่วโมง)</option>
+          <option value="material">ต้นทุนวัตถุดิบทางตรง (%)</option>
+          <option value="labor">ต้นทุนค่าแรงงานทางตรง (%)</option>
+        </select></td><td></td></tr>
+      <tr id="ohHoursRow"><td class="label" id="ohHoursLabel"></td><td class="r" style="border:none"><input id="ohHours" class="num" inputmode="decimal"></td><td></td></tr>
+      <tr><td class="label"><span id="ohRateLabel"></span><br><small class="muted" id="ohFormula"></small></td><td class="r" style="border:none"><input id="ohPct" class="num" inputmode="decimal"></td><td class="r" id="oh"></td></tr>
       <tr><td class="label" colspan="2">รวมต้นทุนที่ผลิตเสร็จทั้งสิ้น</td><td class="r" id="totalCost"></td></tr>
       <tr><td class="label" colspan="2">ปริมาณสินค้าสำเร็จรูปที่ผลิตได้</td><td class="r"><input id="outQty" class="num" style="width:100%"></td></tr>
       <tr class="strong total"><td class="label" colspan="2">ราคาต่อหน่วยของสินค้าที่ผลิตเสร็จ</td><td class="r" id="unitCost" style="width:170px"></td></tr>
@@ -315,14 +326,14 @@ const sample = {
   company: "บริษัท ตัวอย่างส่งออก จำกัด",
   code: "01-010204",
   name: "จานลึก ลายม้า",
-  laborPct: 15, ohPct: 30, outQty: 12,
+  laborPct: 15, ohBase: "material", ohPct: 30, ohHours: "", outQty: 12,
   rows: [
     { mcode: "", desc: "", qty: 15, unit: "กิโลกรัม", price: 250 },
     ...Array.from({ length: 5 }, () => ({ mcode: "", desc: "", qty: "", unit: "", price: "" })),
   ],
 };
 const blank = () => ({
-  company: $("company").value, code: "", name: "", laborPct: 15, ohPct: 30, outQty: "",
+  company: $("company").value, code: "", name: "", laborPct: 15, ohBase: "material", ohPct: 30, ohHours: "", outQty: "",
   rows: Array.from({ length: 6 }, () => ({ mcode: "", desc: "", qty: "", unit: "", price: "" })),
 });
 
@@ -371,7 +382,8 @@ function syncAllRows() { [...$("rows").children].forEach((tr) => syncRow(tr, fal
 function getData() {
   return {
     company: $("company").value, code: $("code").value, name: $("name").value,
-    laborPct: $("laborPct").value, ohPct: $("ohPct").value, outQty: $("outQty").value,
+    laborPct: $("laborPct").value, ohBase: $("ohBase").value, ohPct: $("ohPct").value, ohHours: $("ohHours").value,
+    outQty: $("outQty").value,
     rows: [...$("rows").children].map((tr) => {
       const o = {};
       for (const inp of tr.querySelectorAll("input")) o[inp.dataset.f] = inp.value;
@@ -381,20 +393,34 @@ function getData() {
 }
 
 function setData(d) {
-  for (const k of ["company", "code", "name", "laborPct", "ohPct", "outQty"]) $(k).value = d[k] ?? "";
+  for (const k of ["company", "code", "name", "laborPct", "ohPct", "ohHours", "outQty"]) $(k).value = d[k] ?? "";
+  $("ohBase").value = d.ohBase || "material"; // รายการที่บันทึกก่อนมีตัวเลือกนี้ คิดจากวัตถุดิบทางตรง
   $("rows").innerHTML = "";
   d.rows.forEach(addRow);
   recalc();
 }
 
+// ฐานกิจกรรมสำหรับปันส่วนค่าใช้จ่ายการผลิต
+//   pct = อัตราเป็น % ของต้นทุน, ไม่ใช่ pct = อัตราเป็นบาทต่อหน่วยของกิจกรรม
+//   hours = ต้องกรอกจำนวนชั่วโมงที่ใช้ผลิต
+const OH_BASES = {
+  units:    { name: "หน่วยที่ผลิตได้", rate: "อัตราค่าใช้จ่ายการผลิต (บาท/หน่วย)", unit: "หน่วย" },
+  machine:  { name: "ชั่วโมงเครื่องจักร", rate: "อัตราค่าใช้จ่ายการผลิต (บาท/ชั่วโมงเครื่องจักร)", unit: "ชั่วโมง", hours: "ชั่วโมงเครื่องจักรที่ใช้ผลิต (ชั่วโมง)" },
+  dlh:      { name: "ชั่วโมงแรงงานทางตรง", rate: "อัตราค่าใช้จ่ายการผลิต (บาท/ชั่วโมงแรงงาน)", unit: "ชั่วโมง", hours: "ชั่วโมงแรงงานทางตรงที่ใช้ผลิต (ชั่วโมง)" },
+  material: { name: "ต้นทุนวัตถุดิบทางตรง", rate: "ค่าใช้จ่ายการผลิต คิดเป็น % ของวัตถุดิบทางตรง", pct: true },
+  labor:    { name: "ต้นทุนค่าแรงงานทางตรง", rate: "ค่าใช้จ่ายการผลิต คิดเป็น % ของค่าแรงงานทางตรง", pct: true },
+};
+
 function compute(d) {
   const amounts = d.rows.map((r) => num(r.qty) * num(r.price));
   const sumMat = amounts.reduce((a, b) => a + b, 0);
   const labor = sumMat * num(d.laborPct) / 100;
-  const oh = sumMat * num(d.ohPct) / 100;
-  const totalCost = sumMat + labor + oh;
   const q = num(d.outQty);
-  return { amounts, sumMat, labor, oh, totalCost, unitCost: q > 0 ? totalCost / q : null };
+  const ohBase = OH_BASES[d.ohBase] ? d.ohBase : "material";
+  const ohDriver = { units: q, machine: num(d.ohHours), dlh: num(d.ohHours), material: sumMat, labor }[ohBase];
+  const oh = ohDriver * num(d.ohPct) / (OH_BASES[ohBase].pct ? 100 : 1);
+  const totalCost = sumMat + labor + oh;
+  return { amounts, sumMat, labor, ohBase, ohDriver, oh, totalCost, unitCost: q > 0 ? totalCost / q : null };
 }
 
 function recalc() {
@@ -406,6 +432,15 @@ function recalc() {
   $("sumMat").textContent = fmt2(c.sumMat);
   $("labor").textContent = fmt2(c.labor);
   $("oh").textContent = fmt2(c.oh);
+  const b = OH_BASES[c.ohBase];
+  $("ohHoursRow").hidden = !b.hours;
+  $("ohHoursLabel").textContent = b.hours || "";
+  $("ohRateLabel").textContent = b.rate;
+  const rate = num($("ohPct").value);
+  $("ohFormula").textContent = b.pct
+    ? `${b.name} ${fmt2(c.ohDriver)} บาท × ${rate}%`
+    : `${rate.toLocaleString("th-TH")} บาท × ${c.ohDriver.toLocaleString("th-TH")} ${b.unit}`
+      + (c.ohBase === "units" ? " (ปริมาณสินค้าสำเร็จรูปที่ผลิตได้)" : "");
   $("totalCost").textContent = fmt2(c.totalCost);
   $("unitCost").textContent = c.unitCost === null ? "-" : fmtUnit(c.unitCost);
 }
@@ -455,7 +490,8 @@ $("btnCsv").onclick = () => {
     ...d.rows.map((r, i) => [i + 1, r.mcode, r.desc, r.qty, r.unit, r.price, c.amounts[i].toFixed(2)]),
     ["", "", "", "", "", "รวมวัตถุดิบทั้งสิ้น", c.sumMat.toFixed(2)],
     ["", "", "", "", "ค่าแรงงานทางตรง %", d.laborPct, c.labor.toFixed(2)],
-    ["", "", "", "", "ค่าใช้จ่ายการผลิต %", d.ohPct, c.oh.toFixed(2)],
+    ...(OH_BASES[c.ohBase].hours ? [["", "", "", "", "", OH_BASES[c.ohBase].hours, d.ohHours]] : []),
+    ["", "", "", "", OH_BASES[c.ohBase].rate, d.ohPct, c.oh.toFixed(2)],
     ["", "", "", "", "", "รวมต้นทุนที่ผลิตเสร็จทั้งสิ้น", c.totalCost.toFixed(2)],
     ["", "", "", "", "", "ปริมาณสินค้าสำเร็จรูปที่ผลิตได้", d.outQty],
     ["", "", "", "", "", "ราคาต่อหน่วยของสินค้าที่ผลิตเสร็จ", c.unitCost === null ? "" : c.unitCost],
