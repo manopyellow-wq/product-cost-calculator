@@ -86,10 +86,23 @@
   .summary .total td.r { border-bottom: 3px double var(--ink); font-size: 17px; }
   .summary input { width: 90px; }
   .row-actions { margin: 8px 0 16px; }
+  .note { color: var(--muted); font-size: 13px; margin: 0 0 8px; }
+  input.locked { background: var(--band); border-color: var(--line); cursor: not-allowed; }
+
+  /* ทะเบียนวัตถุดิบ */
+  #matDlg { max-width: 860px; }
+  #matDlg .dlg-body { max-height: calc(100vh - 120px); overflow-y: auto; }
+  #matDlg table { min-width: 560px; }
+  #matDlg h4 { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 16px 0 8px; }
+  #matDlg h4 input { flex: 1 1 200px; width: auto; }
+  .map-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin: 8px 0; }
+  .map-grid label { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+  .map-grid select, #mapHeader { padding: 4px 6px; }
+  #mapPreview { font-size: 13px; margin: 8px 0; background: var(--paper); }
 
   @media print {
     body { background: #fff; }
-    .toolbar, .row-actions, td.del, th.del, .hint, .vbtn { display: none !important; }
+    .toolbar, .row-actions, td.del, th.del, .hint, .note, .vbtn { display: none !important; }
     .sheet { border: none; padding: 0; }
     input { background: none; padding: 0; }
   }
@@ -103,8 +116,12 @@
     <button id="btnDelete" class="danger">ลบ</button>
     <button id="btnNew">สร้างใหม่</button>
     <button id="btnSave" class="primary">บันทึก</button>
+    <button id="btnMat">ทะเบียนวัตถุดิบ</button>
     <button id="btnCsv">ส่งออก CSV</button>
     <button id="btnPrint">พิมพ์</button>
+    <button id="btnBackup" title="บันทึกข้อมูลทั้งหมดเป็นไฟล์ เก็บไว้กันหายหรือย้ายไปเครื่องอื่น">สำรองข้อมูล</button>
+    <button id="btnRestore" title="เปิดไฟล์สำรองข้อมูลกลับเข้ามา">กู้คืนข้อมูล</button>
+    <input type="file" id="restoreFile" accept=".json" hidden>
   </div>
 
   <div class="sheet">
@@ -118,6 +135,9 @@
     </div>
 
     <h3 class="section-title">วัตถุดิบทางตรง <button class="vbtn" data-topic="material">▶ คลิปอธิบาย</button></h3>
+    <p class="note">พิมพ์รหัสหรือชื่อวัตถุดิบเพื่อเลือกจาก "ทะเบียนวัตถุดิบ" แล้วระบบจะใส่รายละเอียด หน่วยนับ และราคาต่อหน่วยให้เอง (ถ้าไม่มีในทะเบียนก็พิมพ์เองได้)</p>
+    <datalist id="matCodes"></datalist>
+    <datalist id="matNames"></datalist>
     <div class="scroll">
       <table>
         <thead>
@@ -157,6 +177,46 @@
   </div>
 </dialog>
 
+<dialog id="matDlg">
+  <div class="dlg-head"><span>ทะเบียนวัตถุดิบ</span><button id="matClose" title="ปิด">×</button></div>
+  <div class="dlg-body">
+    <div class="dlg-link">
+      <b>นำเข้าจากไฟล์ Excel</b>
+      <small>(รายงาน "สินค้าคงเหลือ แยกตามเลขที่บัญชีสินค้า" จาก Express หรือไฟล์รายการสินค้าจากโปรแกรมอื่น เป็นไฟล์ .xlsx .xls .csv หรือ .txt — ไม่รับ PDF เพราะวรรณยุกต์จะหาย)</small>
+      <div class="row"><input type="file" id="matFile" accept=".xlsx,.xls,.csv,.txt"></div>
+      <div id="mapBox" hidden>
+        <p id="mapExpress" style="margin:10px 0 4px" hidden>✔ พบรูปแบบรายงานสินค้าคงเหลือของ Express — ใช้หน่วยย่อยเป็นหน่วยนับ และคิดราคาต่อหน่วยจาก มูลค่าคงเหลือ ÷ จำนวนคงเหลือ (ต้นทุนเฉลี่ย)</p>
+        <div id="mapCols">
+          <p style="margin:10px 0 4px">หัวคอลัมน์อยู่แถวที่ <select id="mapHeader"></select></p>
+          <div class="map-grid">
+            <label>รหัสวัตถุดิบ <select data-map="code"></select></label>
+            <label>ชื่อ / รายละเอียด <select data-map="name"></select></label>
+            <label>หน่วยนับ <select data-map="unit"></select></label>
+            <label>ราคาต่อหน่วย (ถ้ามี) <select data-map="price"></select></label>
+          </div>
+        </div>
+        <div class="scroll"><table id="mapPreview"></table></div>
+        <button id="mapImport" class="primary"></button>
+        <small>รหัสที่มีอยู่แล้วในทะเบียนจะถูกอัปเดตตามไฟล์ รหัสใหม่จะถูกเพิ่มเข้าไป</small>
+      </div>
+    </div>
+
+    <h4>รายการวัตถุดิบ (<span id="matCount">0</span> รายการ)
+      <input id="matSearch" placeholder="ค้นหารหัสหรือชื่อ..."></h4>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>รหัสวัตถุดิบ</th><th>ชื่อ / รายละเอียด</th><th>หน่วยนับ</th><th>หน่วยใหญ่</th><th>ราคาต่อหน่วย</th><th class="del"></th></tr></thead>
+        <tbody id="matBody"></tbody>
+      </table>
+    </div>
+    <div class="row-actions" style="margin-bottom:0">
+      <button id="matAdd">+ เพิ่มวัตถุดิบเอง</button>
+      <button id="matClear" class="danger">ล้างทะเบียนทั้งหมด</button>
+    </div>
+  </div>
+</dialog>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 // ================================================================
 // ลิงก์คลิปอธิบาย — ใส่ลิงก์ในเครื่องหมาย "" ได้เลย
@@ -175,7 +235,6 @@ const TOPICS = {
       "วัตถุดิบทางตรงคืออะไร",
       "วิเคราะห์อย่างไรว่าวัตถุดิบไหนเป็นวัตถุดิบทางตรง",
       "ตัวเลขปริมาณและราคาต่อหน่วยเอามาจากไหน",
-      "หาข้อมูลมาได้อย่างไร",
     ],
   },
   labor: {
@@ -271,8 +330,8 @@ function addRow(r = { mcode: "", desc: "", qty: "", unit: "", price: "" }) {
   const tr = document.createElement("tr");
   tr.innerHTML = `
     <td class="c idx"></td>
-    <td><input data-f="mcode"></td>
-    <td><input data-f="desc"></td>
+    <td><input data-f="mcode" list="matCodes" autocomplete="off"></td>
+    <td><input data-f="desc" list="matNames" autocomplete="off"></td>
     <td style="width:100px"><input data-f="qty" class="num" inputmode="decimal"></td>
     <td style="width:100px"><input data-f="unit"></td>
     <td style="width:110px"><input data-f="price" class="num" inputmode="decimal"></td>
@@ -280,8 +339,34 @@ function addRow(r = { mcode: "", desc: "", qty: "", unit: "", price: "" }) {
     <td class="del"><button title="ลบแถว">×</button></td>`;
   for (const inp of tr.querySelectorAll("input")) inp.value = r[inp.dataset.f] ?? "";
   tr.querySelector(".del button").onclick = () => { tr.remove(); recalc(); };
+  const f = (name) => tr.querySelector(`[data-f="${name}"]`);
+  f("mcode").addEventListener("change", () => { syncRow(tr, true); recalc(); });
+  f("desc").addEventListener("change", () => {
+    // เลือกจากชื่อ: ถ้าชื่อนี้มีรหัสเดียวในทะเบียน ให้ใส่รหัสให้
+    const hits = materials.filter((m) => m.code && m.name === f("desc").value.trim());
+    if (hits.length === 1) { f("mcode").value = hits[0].code; syncRow(tr, true); recalc(); }
+  });
   $("rows").appendChild(tr);
+  syncRow(tr, false);
 }
+
+// ผูกแถวกับทะเบียนวัตถุดิบ: ถ้ารหัสอยู่ในทะเบียน หน่วยนับจะถูกล็อกให้ตรงกับทะเบียน
+// fill = true คือผู้ใช้เพิ่งเลือกรหัส ให้ใส่ชื่อและราคาจากทะเบียนด้วย
+function syncRow(tr, fill) {
+  const f = (name) => tr.querySelector(`[data-f="${name}"]`);
+  const m = matByCode().get(f("mcode").value.trim());
+  const unit = f("unit");
+  unit.readOnly = !!m;
+  unit.classList.toggle("locked", !!m);
+  unit.title = m ? "หน่วยนับดึงจากทะเบียนวัตถุดิบ" + (convText(m) ? ` (${convText(m)})` : "") : "";
+  if (!m) return;
+  unit.value = m.unit;
+  if (fill) {
+    f("desc").value = m.name;
+    if (m.price !== "") f("price").value = m.price;
+  }
+}
+function syncAllRows() { [...$("rows").children].forEach((tr) => syncRow(tr, false)); recalc(); }
 
 function getData() {
   return {
@@ -383,7 +468,313 @@ $("btnCsv").onclick = () => {
   URL.revokeObjectURL(a.href);
 };
 
+// ---- ทะเบียนวัตถุดิบ (เก็บในเบราว์เซอร์เครื่องนี้) ----
+const MAT_KEY = "cost-calc-materials";
+const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+let materials = (() => { try { return JSON.parse(localStorage.getItem(MAT_KEY)) || []; } catch { return []; } })();
+function saveMaterials() { try { localStorage.setItem(MAT_KEY, JSON.stringify(materials)); return true; } catch { return false; } }
+// หน่วยใหญ่จากรายงาน Express เช่น "1 รีม = 500 แผ่น" (ไม่แสดงถ้าหน่วยใหญ่กับหน่วยย่อยเท่ากัน)
+const convText = (m) => m.big && m.factor && !(m.big === m.unit && m.factor === 1)
+  ? `1 ${m.big} = ${m.factor.toLocaleString("th-TH")} ${m.unit}` : "";
+function matByCode() {
+  const map = new Map();
+  for (const m of materials) if (m.code) map.set(m.code, m);
+  return map;
+}
+function refreshMatLists() {
+  $("matCodes").innerHTML = materials.filter((m) => m.code)
+    .map((m) => `<option value="${esc(m.code)}">${esc(m.name)} (${esc(m.unit)})</option>`).join("");
+  $("matNames").innerHTML = [...new Set(materials.map((m) => m.name).filter(Boolean))]
+    .map((n) => `<option value="${esc(n)}"></option>`).join("");
+}
+
+function renderMatTable() {
+  $("matCount").textContent = materials.length;
+  $("matBody").innerHTML = materials.map((m, i) => `
+    <tr data-i="${i}">
+      <td><input data-m="code" value="${esc(m.code)}"></td>
+      <td><input data-m="name" value="${esc(m.name)}"></td>
+      <td style="width:110px"><input data-m="unit" value="${esc(m.unit)}"></td>
+      <td style="white-space:nowrap;font-size:13px">${esc(convText(m))}</td>
+      <td style="width:120px"><input data-m="price" class="num" inputmode="decimal" value="${esc(m.price)}"></td>
+      <td class="del"><button title="ลบ">×</button></td>
+    </tr>`).join("");
+  filterMatTable();
+}
+function filterMatTable() {
+  const q = $("matSearch").value.trim().toLowerCase();
+  for (const tr of $("matBody").children) {
+    const m = materials[tr.dataset.i];
+    tr.hidden = !!q && !`${m.code} ${m.name}`.toLowerCase().includes(q);
+  }
+}
+$("matSearch").addEventListener("input", filterMatTable);
+$("matBody").addEventListener("input", (e) => {
+  const tr = e.target.closest("tr");
+  materials[tr.dataset.i][e.target.dataset.m] = e.target.value.trim();
+  saveMaterials();
+});
+$("matBody").addEventListener("click", (e) => {
+  if (!e.target.closest(".del button")) return;
+  materials.splice(e.target.closest("tr").dataset.i, 1);
+  saveMaterials();
+  renderMatTable();
+});
+$("matAdd").onclick = () => {
+  materials.push({ code: "", name: "", unit: "", price: "" });
+  $("matSearch").value = "";
+  renderMatTable();
+  $("matBody").lastElementChild.querySelector("input").focus();
+};
+$("matClear").onclick = () => {
+  if (!materials.length || !confirm(`ลบวัตถุดิบในทะเบียนทั้งหมด ${materials.length} รายการ?`)) return;
+  materials = [];
+  saveMaterials();
+  renderMatTable();
+};
+$("btnMat").onclick = () => { renderMatTable(); $("matDlg").showModal(); };
+$("matClose").onclick = () => $("matDlg").close();
+$("matDlg").addEventListener("close", () => {
+  materials = materials.filter((m) => m.code || m.name);
+  saveMaterials();
+  refreshMatLists();
+  syncAllRows();
+});
+
+// ---- นำเข้าจาก Excel / CSV ----
+let fileRows = [];
+const FIELD_GUESS = [ // ลำดับสำคัญ: ราคาก่อน เพื่อไม่ให้ "ราคาต่อหน่วย" ถูกจับเป็นหน่วยนับ
+  ["price", /ราคา|ต้นทุน|ทุน|price|cost/i],
+  ["unit", /^(หน่วยนับ|หน่วยย่อย|หน่วย)$|unit/i],
+  ["code", /รหัส|code/i],
+  ["name", /ชื่อ|รายละเอียด|รายการ|name|desc/i],
+];
+const colName = (i) => (i >= 26 ? colName(Math.floor(i / 26) - 1) : "") + String.fromCharCode(65 + (i % 26));
+
+// รายงาน "สินค้าคงเหลือ แยกตามเลขที่บัญชีสินค้า" ของ Express บรรทัดสินค้าหน้าตาแบบนี้
+//   CAS-AG/290G31*43NV  กระดาษอาร์ตมัน...  2 รีมx500.00  375.000 แผ่น  3,297.25
+//   รหัส  ชื่อ  [จำนวนหน่วยใหญ่] หน่วยใหญ่ x ตัวคูณ  จำนวนหน่วยย่อย หน่วยย่อย  มูลค่าคงเหลือ
+// บรรทัดคลัง ("01 คลังสำนักงานใหญ่ ...") และหัวรายงานไม่เข้ารูปแบบนี้จึงถูกข้ามไปเอง
+const EXPRESS_ITEM = /^(\S+)\s+(.*?)\s+(?:([\d,]+)\s+)?(\S+?)\s?x([\d,]*\.?\d+)\s+([\d,]*\.?\d+)\s+(\S+)\s+(-?[\d,]*\.\d+)$/;
+let expressItems = [];
+function parseExpressStock(rows) {
+  const out = [];
+  for (const r of rows) {
+    const m = EXPRESS_ITEM.exec(r.filter(Boolean).join(" ").replace(/\s+/g, " ").trim());
+    if (!m) continue;
+    const [, code, name, bigQty, big, factor, smallQty, unit, value] = m;
+    const qty = num(bigQty) * num(factor) + num(smallQty);
+    out.push({ code, name, unit, big, factor: num(factor), hasPrice: true,
+      price: qty > 0 ? String(+(num(value) / qty).toFixed(4)) : "" });
+  }
+  return out;
+}
+
+// รายงานสินค้าคงเหลือแบบตาราง (แยกคอลัมน์ จำนวนหน่วยใหญ่ / หน่วยใหญ่ / อัตราแปลง / จำนวนหน่วยย่อย / หน่วยย่อย / มูลค่าคงเหลือ)
+// สินค้าเดียวกันที่อยู่หลายคลังจะถูกรวมจำนวนและมูลค่าก่อนคิดราคาต่อหน่วย
+function parseExpressTable(rows) {
+  const hdr = rows.findIndex((r) => r.some((v) => /รหัส/.test(v)) && r.some((v) => /มูลค่า/.test(v)) && r.some((v) => /หน่วยย่อย/.test(v)));
+  if (hdr < 0) return [];
+  const head = rows[hdr];
+  const col = (re) => head.findIndex((h) => re.test(h));
+  const c = {
+    code: col(/รหัส/), name: col(/ชื่อ/), value: col(/มูลค่า/),
+    bigQty: col(/จำนวน.*หน่วยใหญ่/), big: col(/^หน่วยใหญ่$/), factor: col(/อัตราแปลง|ตัวคูณ/),
+    smallQty: col(/จำนวน.*หน่วยย่อย/), unit: col(/^หน่วยย่อย$/), total: col(/รวม.*หน่วยย่อย/),
+  };
+  if (c.code < 0 || c.unit < 0 || (c.smallQty < 0 && c.total < 0)) return [];
+  const get = (r, k) => (c[k] < 0 ? "" : r[c[k]] ?? "");
+  const byCode = new Map();
+  for (const r of rows.slice(hdr + 1)) {
+    const code = get(r, "code");
+    if (!code || /^รวม/.test(code) || !get(r, "unit")) continue;
+    const qty = c.smallQty >= 0
+      ? num(get(r, "bigQty")) * num(get(r, "factor")) + num(get(r, "smallQty"))
+      : num(get(r, "total"));
+    const it = byCode.get(code) || { code, name: get(r, "name"), unit: get(r, "unit"), big: get(r, "big"), factor: num(get(r, "factor")), qty: 0, value: 0 };
+    it.qty += qty;
+    it.value += num(get(r, "value"));
+    byCode.set(code, it);
+  }
+  return [...byCode.values()].map(({ qty, value, ...m }) => ({
+    ...m, factor: m.factor || 1, big: m.big || m.unit, hasPrice: true,
+    price: qty > 0 ? String(+(value / qty).toFixed(4)) : "",
+  }));
+}
+
+$("matFile").onchange = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (/\.pdf$/i.test(file.name)) {
+    alert("ไฟล์ PDF จาก Express อ่านวรรณยุกต์ไม่ได้ (เช่น \"แผ่น\" จะกลายเป็น \"แผน\") ทำให้รหัสและหน่วยนับผิด\nกรุณาส่งออกรายงานจาก Express เป็นไฟล์ Excel หรือไฟล์ข้อความ (.txt) แทน");
+    e.target.value = "";
+    return;
+  }
+  const isText = /\.(csv|txt)$/i.test(file.name);
+  if (!isText && typeof XLSX === "undefined") { alert("โหลดตัวอ่านไฟล์ Excel ไม่สำเร็จ กรุณาเชื่อมต่ออินเทอร์เน็ตแล้วเปิดแอปใหม่"); return; }
+  try {
+    const buf = await file.arrayBuffer();
+    if (isText) {
+      // ไฟล์จากโปรแกรมไทยมักเป็น TIS-620 (windows-874) ถ้าอ่านเป็น UTF-8 ไม่ได้ให้ลองแบบนั้น
+      let text;
+      try { text = new TextDecoder("utf-8", { fatal: true }).decode(buf); }
+      catch { text = new TextDecoder("windows-874").decode(buf); }
+      if (/\.txt$/i.test(file.name) || typeof XLSX === "undefined") {
+        fileRows = text.split(/\r?\n/).map((l) => /\.csv$/i.test(file.name) ? l.split(",") : [l]);
+      } else {
+        const wb = XLSX.read(text, { type: "string" });
+        fileRows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "", raw: false });
+      }
+    } else {
+      // รายงานยาวๆ บางทีถูกแบ่งเป็นหลายชีต จึงอ่านทุกชีตต่อกัน
+      const wb = XLSX.read(buf, { type: "array" });
+      fileRows = wb.SheetNames.flatMap((n) => XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: "", raw: false }));
+    }
+    fileRows = fileRows.map((r) => r.map((v) => String(v).trim()));
+  } catch (err) {
+    alert("อ่านไฟล์ไม่สำเร็จ: " + err.message);
+    return;
+  }
+  if (!fileRows.length) { alert("ไม่พบข้อมูลในไฟล์"); return; }
+
+  expressItems = parseExpressStock(fileRows);
+  if (!expressItems.length) expressItems = parseExpressTable(fileRows);
+  $("mapExpress").hidden = !expressItems.length;
+  $("mapCols").hidden = !!expressItems.length;
+  $("mapBox").hidden = false;
+  if (expressItems.length) { renderMapPreview(); return; }
+
+  // หาแถวหัวคอลัมน์: แถวแรกที่มีคำว่า "รหัส" และ "หน่วย" (รายงาน Express มักมีชื่อรายงานอยู่ด้านบน)
+  let hdr = fileRows.findIndex((r) => r.some((v) => /รหัส|code/i.test(v)) && r.some((v) => /หน่วย|unit/i.test(v)));
+  if (hdr < 0) hdr = Math.max(0, fileRows.findIndex((r) => r.filter(Boolean).length >= 2));
+  $("mapHeader").innerHTML = fileRows.slice(0, 30).map((r, i) =>
+    `<option value="${i}">${i + 1}: ${esc(r.filter(Boolean).slice(0, 4).join(" | ").slice(0, 60))}</option>`).join("");
+  $("mapHeader").value = hdr;
+  buildMapSelects(true);
+};
+
+function buildMapSelects(guess) {
+  const head = fileRows[$("mapHeader").value] || [];
+  const width = Math.max(...fileRows.map((r) => r.length));
+  const opts = `<option value="">— ไม่มี —</option>` + Array.from({ length: width }, (_, i) =>
+    `<option value="${i}">${colName(i)}: ${esc(head[i] || "(ว่าง)")}</option>`).join("");
+  const sels = Object.fromEntries([...document.querySelectorAll("[data-map]")].map((s) => [s.dataset.map, s]));
+  const prev = Object.fromEntries(Object.entries(sels).map(([k, s]) => [k, s.value]));
+  for (const s of Object.values(sels)) s.innerHTML = opts;
+  if (guess) {
+    const used = new Set();
+    for (const [field, re] of FIELD_GUESS) {
+      const i = head.findIndex((h, i) => h && re.test(h) && !used.has(i));
+      sels[field].value = i < 0 ? "" : i;
+      if (i >= 0) used.add(i);
+    }
+  } else {
+    for (const [k, s] of Object.entries(sels)) s.value = prev[k];
+  }
+  renderMapPreview();
+}
+
+function mappedRows() {
+  if (expressItems.length) return expressItems;
+  const col = {};
+  document.querySelectorAll("[data-map]").forEach((s) => col[s.dataset.map] = s.value === "" ? -1 : +s.value);
+  if (col.code < 0) return [];
+  const get = (r, k) => (col[k] < 0 ? "" : r[col[k]] ?? "");
+  return fileRows.slice(+$("mapHeader").value + 1)
+    .map((r) => ({ code: get(r, "code"), name: get(r, "name"), unit: get(r, "unit"), price: get(r, "price"), hasPrice: col.price >= 0 }))
+    .filter((m) => m.code && !/^รวม/.test(m.code))
+    .map((m) => ({ ...m, price: m.price === "" ? "" : String(num(m.price)) }));
+}
+
+function renderMapPreview() {
+  const rows = mappedRows();
+  $("mapPreview").innerHTML = `<tr><th>รหัส</th><th>ชื่อ / รายละเอียด</th><th>หน่วยนับ</th><th>หน่วยใหญ่</th><th>ราคาต่อหน่วย</th></tr>` +
+    rows.slice(0, 5).map((m) => `<tr><td>${esc(m.code)}</td><td>${esc(m.name)}</td><td>${esc(m.unit)}</td><td>${esc(convText(m))}</td><td class="r">${esc(m.price)}</td></tr>`).join("") +
+    (rows.length > 5 ? `<tr><td colspan="5" class="c">... และอีก ${rows.length - 5} รายการ</td></tr>` : "");
+  $("mapImport").textContent = rows.length ? `นำเข้า ${rows.length} รายการ` : "กรุณาเลือกคอลัมน์รหัสวัตถุดิบ";
+  $("mapImport").disabled = !rows.length;
+}
+$("mapHeader").onchange = () => buildMapSelects(true);
+document.querySelectorAll("[data-map]").forEach((s) => s.onchange = renderMapPreview);
+
+$("mapImport").onclick = () => {
+  const byCode = matByCode();
+  let added = 0, updated = 0;
+  for (const r of mappedRows()) {
+    const m = byCode.get(r.code);
+    if (m) {
+      m.name = r.name || m.name;
+      m.unit = r.unit || m.unit;
+      if (r.big) { m.big = r.big; m.factor = r.factor; }
+      if (r.hasPrice && r.price !== "") m.price = r.price;
+      updated++;
+    } else {
+      const n = { code: r.code, name: r.name, unit: r.unit, price: r.price };
+      if (r.big) { n.big = r.big; n.factor = r.factor; }
+      materials.push(n);
+      byCode.set(n.code, n);
+      added++;
+    }
+  }
+  if (!saveMaterials()) { alert("บันทึกทะเบียนไม่สำเร็จ (เบราว์เซอร์ไม่อนุญาตให้เก็บข้อมูล)"); return; }
+  $("mapBox").hidden = true;
+  $("matFile").value = "";
+  $("matSearch").value = "";
+  renderMatTable();
+  alert(`นำเข้าเรียบร้อย: เพิ่มใหม่ ${added} รายการ, อัปเดต ${updated} รายการ`);
+};
+
+// ---- สำรอง / กู้คืนข้อมูล ----
+$("btnBackup").onclick = () => {
+  let links = {};
+  try { links = JSON.parse(localStorage.getItem(LINK_KEY)) || {}; } catch {}
+  const data = { app: "cost-calc", version: 1, savedAt: new Date().toISOString(), products: loadStore(), materials, videoLinks: links };
+  const d = new Date(), p = (n) => String(n).padStart(2, "0");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 1)], { type: "application/json" }));
+  a.download = `สำรองข้อมูลต้นทุน_${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+$("btnRestore").onclick = () => $("restoreFile").click();
+$("restoreFile").onchange = async (e) => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  let data;
+  try { data = JSON.parse(await file.text()); } catch { data = null; }
+  if (!data || data.app !== "cost-calc") { alert("ไฟล์นี้ไม่ใช่ไฟล์สำรองข้อมูลของแอปนี้"); return; }
+  const products = data.products || {}, mats = Array.isArray(data.materials) ? data.materials : [];
+  const when = data.savedAt ? new Date(data.savedAt).toLocaleString("th-TH") : "-";
+  if (!confirm(`กู้คืนข้อมูลจากไฟล์ที่สำรองเมื่อ ${when}\n` +
+    `- รายการต้นทุน ${Object.keys(products).length} รายการ\n- วัตถุดิบในทะเบียน ${mats.length} รายการ\n\n` +
+    `ข้อมูลที่มีอยู่แล้วจะไม่ถูกลบ แต่รายการที่ชื่อ/รหัสซ้ำจะถูกแทนที่ด้วยข้อมูลจากไฟล์`)) return;
+
+  const s = loadStore();
+  Object.assign(s, products);
+  const byCode = matByCode();
+  for (const m of mats) {
+    if (!m || !m.code) continue;
+    const n = { code: String(m.code), name: m.name ?? "", unit: m.unit ?? "", price: m.price ?? "" };
+    if (m.big) { n.big = m.big; n.factor = m.factor; }
+    if (byCode.has(n.code)) Object.assign(byCode.get(n.code), n);
+    else { materials.push(n); byCode.set(n.code, n); }
+  }
+  let links = {};
+  try { links = JSON.parse(localStorage.getItem(LINK_KEY)) || {}; } catch {}
+  Object.assign(links, data.videoLinks || {});
+  let ok = saveStore(s) && saveMaterials();
+  try { localStorage.setItem(LINK_KEY, JSON.stringify(links)); } catch { ok = false; }
+  if (!ok) { alert("กู้คืนไม่สำเร็จ (เบราว์เซอร์ไม่อนุญาตให้เก็บข้อมูล)"); return; }
+  refreshList();
+  refreshMatLists();
+  refreshVideoButtons();
+  syncAllRows();
+  alert("กู้คืนข้อมูลเรียบร้อย");
+};
+
 document.addEventListener("input", recalc);
+refreshMatLists();
 refreshList();
 setData(sample);
 </script>
